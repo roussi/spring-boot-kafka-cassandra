@@ -1,6 +1,9 @@
 HELP.md
 .gradle
 /build/
+
+twitter-access.properties
+
 !gradle/wrapper/gradle-wrapper.jar
 
 ### STS ###
@@ -29,4 +32,3 @@ HELP.md
 ### VS Code ###
 .vscode/
 
-/src/main/resources/twitter-access.properties
