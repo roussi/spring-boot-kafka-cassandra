@@ -29,4 +29,4 @@ HELP.md
 ### VS Code ###
 .vscode/
 
-src/main/resources/twitter-access.properties
+/src/main/resources/twitter-access.properties
