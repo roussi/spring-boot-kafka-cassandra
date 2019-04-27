@@ -19,6 +19,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.PropertySource;
 import org.springframework.context.annotation.PropertySources;
+import org.springframework.kafka.annotation.EnableKafka;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 import org.springframework.util.concurrent.ListenableFuture;
@@ -32,77 +33,79 @@ import java.util.concurrent.TimeUnit;
 @Log4j2
 @PropertySource(value = "classpath:twitter-access.properties")
 @SpringBootApplication
+@EnableKafka
 public class TwitterApiApplication {
 
-	//public static final String CONSUMER_KEY = "GCn5BEhukvFSEfkpUoVxxYavY";
-	//public static final String CONSUMER_SECRET = "wTKdLLuOVcKsPlT9PX7jSVqN7Zsa53pFDAO78RVolvFxYyfO4F";
-	//public static final String TOKEN = "2485967425-iO41xYNhO3bv5gsY2HOERGohYm1eHye0S1XEQie";
-	//public static final String TOKEN_SECRET = "X5JA072EiC76mUIWcAPspL8UprtECrNoASIdtNnVvgEd1";
-	@Value("${TWITTER_CONSUMER_KEY}")
-	private String twitterKey;
-	@Value("${TWITTER_CONSUMER_SECRET}")
-	private String twitterSecret;
-	@Value("${TWITTER_TOKEN}")
-	private String twitterToken;
-	@Value("${TWITTER_SECRET}")
-	private String twitterTokenSecret;
+    //public static final String CONSUMER_KEY = "GCn5BEhukvFSEfkpUoVxxYavY";
+    //public static final String CONSUMER_SECRET = "wTKdLLuOVcKsPlT9PX7jSVqN7Zsa53pFDAO78RVolvFxYyfO4F";
+    //public static final String TOKEN = "2485967425-iO41xYNhO3bv5gsY2HOERGohYm1eHye0S1XEQie";
+    //public static final String TOKEN_SECRET = "X5JA072EiC76mUIWcAPspL8UprtECrNoASIdtNnVvgEd1";
+    @Value("${TWITTER_CONSUMER_KEY}")
+    private String twitterKey;
+    @Value("${TWITTER_CONSUMER_SECRET}")
+    private String twitterSecret;
+    @Value("${TWITTER_TOKEN}")
+    private String twitterToken;
+    @Value("${TWITTER_SECRET}")
+    private String twitterTokenSecret;
 
-	public static void main(String[] args) {
-		SpringApplication.run(TwitterApiApplication.class, args);
-	}
+    public static void main(String[] args) {
+        SpringApplication.run(TwitterApiApplication.class, args);
+    }
 
-	@Bean
-	CommandLineRunner runner(KafkaTemplate<String, String> kafkaTemplate){
-		return (args)->{
-			/** Set up your blocking queues: Be sure to size these properly based on expected TPS of your stream */
-			BlockingQueue<String> msgQueue = new LinkedBlockingQueue<String>(100);
-			Client client= buildTwitterClient(msgQueue);
-			client.connect();
-			// on a different thread, or multiple different threads....
-			while (!client.isDone()) {
-				String msg = msgQueue.poll(5, TimeUnit.SECONDS);
-				ProducerRecord<String, String> record= new ProducerRecord<>("twitter", msg);
-				ListenableFuture<SendResult<String, String>> msgFuture = kafkaTemplate.send(record);
-				msgFuture.addCallback(new ListenableFutureCallback<>() {
-					@Override
-					public void onFailure(Throwable ex) {
-						log.error("----- {}", ex);
-					}
+    @Bean
+    CommandLineRunner runner(KafkaTemplate<String, String> kafkaTemplate) {
+        return (args) -> {
+            /** Set up your blocking queues: Be sure to size these properly based on expected TPS of your stream */
+            BlockingQueue<String> msgQueue = new LinkedBlockingQueue<String>(100);
+            Client client = buildTwitterClient(msgQueue);
+            client.connect();
+            // on a different thread, or multiple different threads....
+            while (!client.isDone()) {
+                String msg = msgQueue.poll(5, TimeUnit.SECONDS);
+                ProducerRecord<String, String> record = new ProducerRecord<>("twitter", msg);
+                kafkaTemplate.send(record)
+                        .addCallback(new ListenableFutureCallback<>() {
+                            @Override
+                            public void onFailure(Throwable ex) {
+                                log.error("----- {}", ex);
+                            }
 
-					@Override
-					public void onSuccess(SendResult<String, String> result) {
-						log.info("----- msg sent to kafka {}", result);
-					}
-				});
-				log.info("message = {}", msg);
-			}
-		};
-	}
-	public Client buildTwitterClient(BlockingQueue<String> msgQueue){
+                            @Override
+                            public void onSuccess(SendResult<String, String> result) {
+                                log.info("----- msg sent to kafka {}", result);
+                            }
+                        });
+                log.info("message = {}", msg);
+            }
+        };
+    }
+
+    public Client buildTwitterClient(BlockingQueue<String> msgQueue) {
 
 
-		/** Declare the host you want to connect to, the endpoint, and authentication (basic auth or oauth) */
-		Hosts hostKafkaPoc = new HttpHosts(Constants.STREAM_HOST);
-		StatusesFilterEndpoint hosebirdEndpoint = new StatusesFilterEndpoint();
-		// Optional: set up some followings and track terms
-		List<Long> followings = Lists.newArrayList(1234L, 566788L);
-		List<String> terms = Lists.newArrayList("kafka", "spring");
-		hosebirdEndpoint.followings(followings);
-		hosebirdEndpoint.trackTerms(terms);
+        /** Declare the host you want to connect to, the endpoint, and authentication (basic auth or oauth) */
+        Hosts hostKafkaPoc = new HttpHosts(Constants.STREAM_HOST);
+        StatusesFilterEndpoint hosebirdEndpoint = new StatusesFilterEndpoint();
+        // Optional: set up some followings and track terms
+        List<Long> followings = Lists.newArrayList(1234L, 566788L);
+        List<String> terms = Lists.newArrayList("kafka", "spring");
+        hosebirdEndpoint.followings(followings);
+        hosebirdEndpoint.trackTerms(terms);
 
-		// These secrets should be read from a config file
-		Authentication kafkaPocAuth = new OAuth1(
-				twitterKey,
-				twitterSecret,
-				twitterToken,
-				twitterTokenSecret);
-		ClientBuilder builder = new ClientBuilder()
-				.name("kafka-poc-0-client-01")                              // optional: mainly for the logs
-				.hosts(hostKafkaPoc)
-				.authentication(kafkaPocAuth)
-				.endpoint(hosebirdEndpoint)
-				.processor(new StringDelimitedProcessor(msgQueue));
+        // These secrets should be read from a config file
+        Authentication kafkaPocAuth = new OAuth1(
+                twitterKey,
+                twitterSecret,
+                twitterToken,
+                twitterTokenSecret);
+        ClientBuilder builder = new ClientBuilder()
+                .name("kafka-poc-0-client-01")                              // optional: mainly for the logs
+                .hosts(hostKafkaPoc)
+                .authentication(kafkaPocAuth)
+                .endpoint(hosebirdEndpoint)
+                .processor(new StringDelimitedProcessor(msgQueue));
 
-		return builder.build();
-	}
+        return builder.build();
+    }
 }
